@@ -11,15 +11,20 @@ class ObjectiveMethod(Protocol):
     def assign_goal(self, belief_map: object, robot_state: object) -> list[float]: ...
 
 
-ObjectiveFactory = Callable[[float], ObjectiveMethod]
+ObjectiveFactory = Callable[[float, object | None], ObjectiveMethod]
 
 
-def _nearest_frontier_factory(grid_size: float) -> ObjectiveMethod:
+def _nearest_frontier_factory(
+    grid_size: float, clustering_method: object | None
+) -> ObjectiveMethod:
     nearest_class = import_module(
         "Logic.Methods.Objective Assign.Frontiers approaches."
         "Frontier detection methods.NearestFrontier"
     ).NearestFrontier
-    return nearest_class(cell_size=grid_size)
+    return nearest_class(
+        cell_size=grid_size,
+        clustering_method=clustering_method,
+    )
 
 
 class ObjectiveAssignController:
@@ -44,13 +49,17 @@ class ObjectiveAssignController:
     def selected_identifier(self) -> str:
         return self._methods[self._selected][0]
 
-    def create(self, grid_size: float = 1.0) -> ObjectiveMethod:
+    def create(
+        self,
+        grid_size: float = 1.0,
+        clustering_method: object | None = None,
+    ) -> ObjectiveMethod:
         factory = self._methods[self._selected][1]
         if factory is None:
             raise NotImplementedError(
                 f"{self._selected} todavía no tiene implementación"
             )
-        return factory(grid_size)
+        return factory(grid_size, clustering_method)
 
     def select(self, method_name: str) -> None:
         if method_name not in self._methods:

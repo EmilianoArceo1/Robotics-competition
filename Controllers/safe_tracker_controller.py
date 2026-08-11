@@ -1,11 +1,20 @@
 """Selección de filtros de seguimiento seguro."""
 
-from Logic.Methods.SafeTracking import NoSafety, SafeTracker
+from collections.abc import Callable
+
+from Logic.Methods.SafeTracking import CBFSafeTracker, NoSafety, SafeTracker
+
+TrackerFactory = Callable[[float], SafeTracker]
 
 
 class SafeTrackerController:
     def __init__(self) -> None:
-        self._methods: dict[str, type[SafeTracker]] = {"Sin filtro": NoSafety}
+        self._methods: dict[str, TrackerFactory] = {
+            "Sin filtro": lambda _radius: NoSafety(),
+            "HOCBF (obstáculos estáticos)": (
+                lambda radius: CBFSafeTracker(safety_radius=radius)
+            ),
+        }
         self._selected = "Sin filtro"
 
     @property
@@ -21,10 +30,8 @@ class SafeTrackerController:
             raise ValueError(f"Safe tracker no registrado: {name}")
         self._selected = name
 
-    def create(self) -> SafeTracker:
-        return self._methods[self._selected]()
+    def create(self, safety_radius: float = 0.0) -> SafeTracker:
+        return self._methods[self._selected](safety_radius)
 
-    def register(self, name: str, tracker: type[SafeTracker]) -> None:
-        if not issubclass(tracker, SafeTracker):
-            raise TypeError("tracker debe implementar SafeTracker")
-        self._methods[name.strip()] = tracker
+    def register(self, name: str, factory: TrackerFactory) -> None:
+        self._methods[name.strip()] = factory

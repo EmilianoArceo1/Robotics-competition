@@ -5,7 +5,7 @@ from __future__ import annotations
 from math import ceil, cos, degrees, floor, hypot, sin
 
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 from Controllers.belief_map_controller import BeliefMapController
@@ -24,12 +24,23 @@ class MapView(QWidget):
         self.robot_length = 0.50
         self.robot_width = 0.35
         self.safety_radius = 0.20
+        self.safety_state = "clear"
+        self.navigation_status = "IDLE · waiting for route"
+        self.metrics_status = "COBERTURA  0.0%     DISTANCIA  0.00 m"
+        self.metrics_detail = "TIEMPO  0.0 s     OBJETIVOS  0     REPLANES  0"
         self.robot_style = "Círculo"
+        self.robot_visual_scale = 0.55
         self.on_robot_moved = on_robot_moved
         self._dragging_robot = False
         self._robot_selected = False
         self._scale = 1.0
         self._scene_center = (0.0, 0.0)
+        self._competition_image: QImage | None = None
+        self._competition_extent: tuple[float, float, float, float] | None = None
+        self._competition_rgb = None
+        self._competition_observed = None
+        self._competition_ground_truth = None
+        self._base_station_position: tuple[float, float] | None = None
         self.setMinimumSize(520, 420)
         self.setObjectName("mapCanvas")
         self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -43,12 +54,85 @@ class MapView(QWidget):
         self.robot_style = style
         self.update()
 
+    def set_robot_visual_scale(self, scale: float) -> None:
+        self.robot_visual_scale = min(2.0, max(0.2, float(scale)))
+        self.update()
+
+    def set_base_station(self, position: tuple[float, float] | None) -> None:
+        self._base_station_position = position
+        self.update()
+
     def set_safety_radius(self, radius: float) -> None:
         self.safety_radius = float(radius)
         self.update()
 
+    def set_safety_state(self, state: str) -> None:
+        self.safety_state = state
+        self.update()
+
+    def set_navigation_status(self, state: str, reason: str) -> None:
+        self.navigation_status = f"{state} · {reason}"
+        self.update()
+
+    def set_exploration_metrics(
+        self,
+        outcome: str,
+        coverage: float,
+        distance: float,
+        elapsed: float,
+        goals: int,
+        replans: int,
+    ) -> None:
+        self.metrics_status = (
+            f"{outcome}     COBERTURA  {coverage * 100.0:.1f}%     "
+            f"DISTANCIA  {distance:.2f} m"
+        )
+        self.metrics_detail = (
+            f"TIEMPO  {elapsed:.1f} s     OBJETIVOS  {goals}     "
+            f"REPLANES  {replans}"
+        )
+        self.update()
+
     def redraw(self) -> None:
         self.update()
+
+    def set_competition_state(self, ground_truth, observed, padding: int,
+                              pixels_per_meter: int) -> None:
+        """Construye la capa de conocimiento exactamente desde 0/0.5/1."""
+        import numpy as np
+        p = int(padding)
+        gt = ground_truth[p:-p, p:-p]
+        obs = observed[p:-p, p:-p]
+        rebuild = (self._competition_rgb is None
+                   or self._competition_observed is None
+                   or self._competition_observed.shape != obs.shape)
+        if rebuild:
+            self._competition_rgb = np.empty((*gt.shape, 3), dtype=np.uint8)
+            self._competition_observed = np.full(obs.shape, np.nan)
+            self._competition_ground_truth = gt.copy()
+            self._competition_image = QImage(
+                self._competition_rgb.data, gt.shape[1], gt.shape[0],
+                self._competition_rgb.strides[0], QImage.Format.Format_RGB888,
+            )
+        changed = obs != self._competition_observed
+        if np.any(changed):
+            rgb = self._competition_rgb
+            rgb[changed] = (18, 29, 47)
+            rgb[changed & (obs == 0)] = (42, 122, 208)
+            rgb[changed & (obs == 1)] = (225, 232, 249)
+            rgb[changed & (gt == 1) & (obs == 0.5)] = (35, 50, 72)
+            self._competition_observed[changed] = obs[changed]
+        self._competition_extent = (0.0, -gt.shape[0] / pixels_per_meter,
+                                    gt.shape[1] / pixels_per_meter, 0.0)
+        self.update()
+
+    def clear_competition_state(self) -> None:
+        self._competition_image = None
+        self._competition_extent = None
+        self._competition_rgb = None
+        self._competition_observed = None
+        self._competition_ground_truth = None
+        self._base_station_position = None
 
     def wheelEvent(self, event) -> None:  # type: ignore[no-untyped-def]
         factor = 1.12 if event.angleDelta().y() > 0 else 1 / 1.12
@@ -103,16 +187,32 @@ class MapView(QWidget):
 
         self._draw_grid(painter, point, min_x, min_y, max_x, max_y)
         snapshot = self.controller.snapshot()
-        if self.controller.show_obstacles:
-            self._draw_obstacles(painter, point, snapshot.obstacles, scale)
-        self._draw_belief(painter, point, scale)
+        if self._competition_image is not None and self._competition_extent is not None:
+            x_min, y_min, x_max, y_max = self._competition_extent
+            painter.drawImage(QRectF(point((x_min, y_max)), point((x_max, y_min))).normalized(),
+                              self._competition_image)
+        elif self.controller.show_obstacles:
+            self._draw_obstacles(
+                painter, point, snapshot.obstacles,
+                scale * snapshot.obstacle_size,
+            )
+        if self._competition_image is None:
+            self._draw_belief(painter, point, scale)
         self._draw_fov(painter, point, snapshot.sensor_visibility)
         self._draw_route(painter, point, snapshot.route, snapshot.active_waypoint_index)
         self._draw_frontiers(painter, point, snapshot.frontiers)
-        self._draw_robot(
-            painter, point(snapshot.robot_position), snapshot.robot_heading, scale
+        self._draw_clusters(painter, point, snapshot.frontier_clusters, scale)
+        for robot in snapshot.robots:
+            self._draw_robot(
+                painter, point(robot.position), robot.heading, scale,
+                primary=robot.controllable, label=robot.robot_id,
+            )
+        if self._base_station_position is not None:
+            self._draw_base_station(painter, point(self._base_station_position), scale)
+        self._draw_hud(
+            painter, snapshot.robot_position, len(snapshot.obstacles),
+            len(snapshot.robots), scale,
         )
-        self._draw_hud(painter, snapshot.robot_position, len(snapshot.obstacles), scale)
 
     def _world_to_screen(self, coordinate: tuple[float, float]) -> QPointF:
         center_x, center_y = self._scene_center
@@ -177,15 +277,22 @@ class MapView(QWidget):
         painter.drawPolygon(polygon)
 
     @staticmethod
-    def _draw_obstacles(painter, point, obstacles, scale: float) -> None:
-        size = scale
+    def _draw_obstacles(painter, point, obstacles, size: float) -> None:
         painter.setPen(QPen(QColor("#fb7185"), 2))
         painter.setBrush(QColor("#4c1d2b"))
         for obstacle in obstacles:
             center = point(obstacle)
-            painter.drawRoundedRect(
-                QRectF(center.x() - size / 2, center.y() - size / 2, size, size), 5, 5
+            rectangle = QRectF(
+                center.x() - size / 2,
+                center.y() - size / 2,
+                size,
+                size,
             )
+            if size < 8.0:
+                painter.drawRect(rectangle)
+            else:
+                radius = min(5.0, size * 0.12)
+                painter.drawRoundedRect(rectangle, radius, radius)
 
     @staticmethod
     def _draw_frontiers(painter, point, frontiers) -> None:
@@ -194,6 +301,21 @@ class MapView(QWidget):
         for frontier in frontiers:
             center = point(frontier)
             painter.drawEllipse(center, 4.5, 4.5)
+
+    @staticmethod
+    def _draw_clusters(painter, point, clusters, scale: float) -> None:
+        palette = (
+            "#22d3ee", "#a78bfa", "#f472b6", "#facc15",
+            "#4ade80", "#fb923c", "#60a5fa", "#e879f9",
+        )
+        radius = max(3.5, min(7.0, scale * 0.14))
+        for index, cluster in enumerate(clusters):
+            color = QColor(palette[index % len(palette)])
+            painter.setPen(QPen(color.lighter(135), 1.5))
+            painter.setBrush(color)
+            for coordinate in cluster:
+                center = point(coordinate)
+                painter.drawEllipse(center, radius, radius)
 
     @staticmethod
     def _draw_route(painter, point, route, active: int) -> None:
@@ -214,10 +336,12 @@ class MapView(QWidget):
             painter.drawEllipse(center, 6 if index == active else 4, 6 if index == active else 4)
 
     def _draw_robot(
-        self, painter, center: QPointF, heading: float, scale: float
+        self, painter, center: QPointF, heading: float, scale: float,
+        *, primary: bool = True, label: str = "",
     ) -> None:
-        half_length = self.robot_length * scale / 2.0
-        half_width = self.robot_width * scale / 2.0
+        visual_scale = self.robot_visual_scale
+        half_length = self.robot_length * scale * visual_scale / 2.0
+        half_width = self.robot_width * scale * visual_scale / 2.0
         forward = QPointF(cos(heading), -sin(heading))
         lateral = QPointF(sin(heading), cos(heading))
         polygon = QPolygonF(
@@ -230,12 +354,17 @@ class MapView(QWidget):
         )
         clearance = hypot(self.robot_length / 2.0, self.robot_width / 2.0)
         clearance = (clearance + self.safety_radius) * scale
-        safety_pen = QPen(QColor(34, 197, 94, 150), 1.5)
+        safety_color = {
+            "active": QColor(250, 204, 21, 210),
+            "emergency": QColor(239, 68, 68, 230),
+        }.get(self.safety_state, QColor(34, 197, 94, 150))
+        safety_pen = QPen(safety_color, 2.0 if self.safety_state != "clear" else 1.5)
         safety_pen.setDashPattern([4, 3])
-        painter.setPen(safety_pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(center, clearance, clearance)
-        if self._robot_selected:
+        if primary:
+            painter.setPen(safety_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(center, clearance, clearance)
+        if primary and self._robot_selected:
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(0, 0, 0, 85))
             painter.drawEllipse(center + QPointF(4, 7), half_length * 1.25, half_width * 1.5)
@@ -257,13 +386,13 @@ class MapView(QWidget):
             )
             for rotor in rotors:
                 painter.drawLine(center, rotor)
-            rotor_radius = max(3.0, scale * 0.065)
+            rotor_radius = max(1.5, scale * 0.065 * visual_scale)
             painter.setPen(QPen(QColor("#f8fafc"), max(1.5, scale * 0.025)))
             painter.setBrush(QColor("#2563eb"))
             for rotor in rotors:
                 painter.drawEllipse(rotor, rotor_radius, rotor_radius)
-            body_length = max(7.0, scale * 0.20)
-            body_width = max(6.0, scale * 0.16)
+            body_length = max(3.5, scale * 0.20 * visual_scale)
+            body_width = max(3.0, scale * 0.16 * visual_scale)
             painter.setPen(QPen(QColor("#f8fafc"), max(1.5, scale * 0.025)))
             painter.setBrush(QColor("#0284c7"))
             painter.save()
@@ -291,14 +420,46 @@ class MapView(QWidget):
             heading_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
             painter.setPen(heading_pen)
             painter.drawLine(center, end)
+        if label:
+            painter.setPen(QColor("#e2e8f0" if primary else "#94a3b8"))
+            painter.setFont(QFont("Segoe UI", 7, QFont.Weight.DemiBold))
+            painter.drawText(
+                QRectF(center.x() - 35, center.y() + half_width + 5, 70, 16),
+                Qt.AlignmentFlag.AlignCenter,
+                label,
+            )
 
-    def _draw_hud(self, painter, position, obstacle_count: int, scale: float) -> None:
+    @staticmethod
+    def _draw_base_station(painter, center: QPointF, scale: float) -> None:
+        radius = max(3.0, min(7.0, scale * 0.09))
+        painter.setPen(QPen(QColor("#fef08a"), 2))
+        painter.setBrush(QColor("#f59e0b"))
+        painter.drawEllipse(center, radius, radius)
+        painter.setPen(QColor("#fde68a"))
+        painter.setFont(QFont("Segoe UI", 7, QFont.Weight.Bold))
+        painter.drawText(QRectF(center.x()-48, center.y()+radius+3, 96, 16),
+                         Qt.AlignmentFlag.AlignCenter, "BASE STATION")
+
+    def _draw_hud(
+        self, painter, position, obstacle_count: int,
+        robot_count: int, scale: float,
+    ) -> None:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(15, 23, 42, 220))
-        painter.drawRoundedRect(QRectF(18, 18, 280, 62), 10, 10)
+        painter.drawRoundedRect(QRectF(18, 18, 410, 128), 10, 10)
         painter.setPen(QColor("#e2e8f0"))
         painter.setFont(QFont("Segoe UI", 10, QFont.Weight.DemiBold))
         painter.drawText(34, 43, f"POSE  {position[0]:+.2f}, {position[1]:+.2f}")
         painter.setPen(QColor("#94a3b8"))
         painter.setFont(QFont("Segoe UI", 9))
-        painter.drawText(34, 65, f"OBSTÁCULOS  {obstacle_count}     ZOOM  {self.zoom:.2f}x")
+        painter.drawText(
+            34, 65,
+            f"ROBOTS  {robot_count}     OBSTÁCULOS  {obstacle_count}     "
+            f"ZOOM  {self.zoom:.2f}x",
+        )
+        painter.setPen(QColor("#7dd3fc"))
+        painter.drawText(34, 87, self.navigation_status)
+        painter.setPen(QColor("#cbd5e1"))
+        painter.drawText(34, 109, self.metrics_status)
+        painter.setPen(QColor("#94a3b8"))
+        painter.drawText(34, 131, self.metrics_detail)

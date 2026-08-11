@@ -7,6 +7,7 @@ from Controllers.map_controller import MapController
 from Controllers.objective_assign_controller import ObjectiveAssignController
 from Controllers.path_planner_controller import PathPlannerController
 from Controllers.simulation_controller import SimulationController
+from Logic.Navigation import NavigationState
 
 
 class SimulationPipelineTests(unittest.TestCase):
@@ -36,6 +37,40 @@ class SimulationPipelineTests(unittest.TestCase):
                 simulation.robot.state.x,
                 simulation.robot.state.y,
             ),
+        )
+        self.assertIn(
+            simulation.navigation_snapshot.state,
+            {
+                NavigationState.FOLLOWING,
+                NavigationState.GOAL_REACHED,
+                NavigationState.EXHAUSTED,
+            },
+        )
+
+    def test_planner_failure_does_not_stop_simulation(self) -> None:
+        map_controller = MapController()
+        simulation = SimulationController(
+            map_controller,
+            PathPlannerController(),
+            ObjectiveAssignController(),
+            BeliefMapController(map_controller.simulation_map),
+        )
+        simulation.start()
+
+        def fail(_start, _goal):
+            raise RuntimeError("synthetic planner failure")
+
+        simulation.track.plan_route = fail
+        simulation.step(0.05)
+
+        self.assertTrue(simulation.running)
+        self.assertEqual(
+            simulation.navigation_snapshot.state,
+            NavigationState.EXHAUSTED,
+        )
+        self.assertIn(
+            "synthetic planner failure",
+            simulation.navigation_snapshot.reason,
         )
 
 

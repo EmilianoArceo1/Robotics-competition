@@ -1,0 +1,11 @@
+HandoffPolicy,Environment,ReportedCoverage,UnreportedCells,RobotsAtBase,Handoffs
+closest_progress,env1,4.028756290438533,0,3,3
+closest_progress,env3,1.508273491563452,0,3,2
+payload_progress,env1,4.028756290438533,0,3,0
+payload_progress,env3,1.508273491563452,0,3,0
+time_saving,env1,4.028756290438533,0,3,0
+time_saving,env3,1.508273491563452,0,3,0
+returning_courier,env1,4.028756290438533,0,3,0
+returning_courier,env3,1.508273491563452,0,3,0
+link_quality,env1,4.028756290438533,0,3,0
+link_quality,env3,1.508273491563452,0,3,0

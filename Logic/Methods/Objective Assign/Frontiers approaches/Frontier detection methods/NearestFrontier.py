@@ -10,27 +10,32 @@ from ..Frontiers import Frontiers
 
 
 class NearestFrontier(Frontiers):
-    def cluster_frontiers(
-        self, frontiers: CoordinateMatrix
+    def rank_goals(
+        self,
+        belief_map: BeliefMap,
+        robot_state: RobotState,
     ) -> CoordinateMatrix:
-        """Retorna fronteras crudas hasta disponer de un clusterizador."""
-        return [coordinate.copy() for coordinate in frontiers]
+        """Devuelve candidatos en el orden definido por esta estrategia."""
+        frontiers = self.get_frontiers(belief_map)
+        return sorted(
+            frontiers,
+            key=lambda coordinate: (
+                (coordinate[0] - robot_state.x) ** 2
+                + (coordinate[1] - robot_state.y) ** 2,
+                coordinate[1],
+                coordinate[0],
+            ),
+        )
 
     def assign_goal(
         self,
         belief_map: BeliefMap,
         robot_state: RobotState,
     ) -> list[float]:
-        frontiers = self.get_frontiers(belief_map)
+        frontiers = self.rank_goals(belief_map, robot_state)
         if not frontiers:
             raise ValueError("No existen fronteras disponibles para asignar")
-        return min(
-            frontiers,
-            key=lambda coordinate: (
-                (coordinate[0] - robot_state.x) ** 2
-                + (coordinate[1] - robot_state.y) ** 2
-            ),
-        ).copy()
+        return frontiers[0].copy()
 
 
 __all__ = ["NearestFrontier"]

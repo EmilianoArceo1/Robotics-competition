@@ -1,0 +1,7 @@
+Exploration,Return,Handoff,Environment,Robots,ReportedCoverage,RobotsAtBase,UnreportedCells,Handoffs,SafeScore
+trajectory_diversified,selective_courier,payload_progress,env1,5,5.473759884974838,5,0,0,5.473759884974838
+trajectory_diversified,selective_courier,returning_courier,env1,5,5.473759884974838,5,0,0,5.473759884974838
+trajectory_diversified,selective_courier,link_quality,env1,5,5.473759884974838,5,0,0,5.473759884974838
+trajectory_diversified,selective_courier,payload_progress,env3,5,1.0703034809321619,5,0,0,1.0703034809321619
+trajectory_diversified,selective_courier,returning_courier,env3,5,1.0703034809321619,5,0,0,1.0703034809321619
+trajectory_diversified,selective_courier,link_quality,env3,5,1.0703034809321619,5,0,0,1.0703034809321619

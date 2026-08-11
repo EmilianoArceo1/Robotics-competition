@@ -1,0 +1,5 @@
+ReturnPolicy,Environment,Robots,ReportedCoverage,LiveCoverage,UnreportedCells,RobotsAtBase
+selective_courier,env1,3,3.9554277498202737,3.9554277498202737,0,3
+selective_courier,env3,3,1.5940412598404654,1.5940412598404654,0,3
+value_density,env1,3,3.9554277498202737,3.9554277498202737,0,3
+value_density,env3,3,1.5940412598404654,1.5940412598404654,0,3

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from math import atan2, ceil, cos, degrees, hypot, isfinite, radians, sin
+from math import atan2, ceil, cos, degrees, hypot, inf, isfinite, radians, sin
 
 from .Physic import RobotState
 from Logic.Map.grid_geometry import GridCell, GridGeometry
@@ -12,6 +12,7 @@ from Logic.Map.grid_geometry import GridCell, GridGeometry
 SensorCell = list[object]
 SensorMatrix = list[SensorCell]
 RobotPose = RobotState | Sequence[float]
+Rectangle = tuple[float, float, float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +101,8 @@ class Sensor:
         environment_matrix: Iterable[Sequence[object]],
         *,
         angular_resolution: float = 2.0,
+        occluders: Iterable[Sequence[float]] | None = None,
+        obstacle_size: float = 1.0,
     ) -> SensorScan:
         """Detecta celdas y calcula el área visible mediante ray casting."""
         if not 0.1 <= angular_resolution <= 30.0:
@@ -107,6 +110,18 @@ class Sensor:
         robot_x, robot_y, robot_heading = self._pose_values(robot_pose)
         geometry = GridGeometry(self.grid_size)
         validated = [self._cell_values(cell) for cell in environment_matrix]
+        rectangles = self._occluder_rectangles(occluders, obstacle_size)
+        dense_geometry = None
+        dense_occupied: set[GridCell] | None = None
+        if len(rectangles) > 512:
+            dense_geometry = GridGeometry(float(obstacle_size))
+            dense_occupied = {
+                dense_geometry.world_to_cell(
+                    (rectangle[0] + rectangle[1]) / 2.0,
+                    (rectangle[2] + rectangle[3]) / 2.0,
+                )
+                for rectangle in rectangles
+            }
         occupied = {
             geometry.world_to_cell(x, y)
             for x, y, occupancy in validated
@@ -136,8 +151,30 @@ class Sensor:
             robot_heading,
             occupied,
             angular_resolution,
+            rectangles,
+            dense_geometry,
+            dense_occupied,
         )
         return SensorScan(detected, polygon)
+
+    @staticmethod
+    def _occluder_rectangles(
+        occluders: Iterable[Sequence[float]] | None,
+        obstacle_size: float,
+    ) -> tuple[Rectangle, ...]:
+        if occluders is None:
+            return ()
+        size = float(obstacle_size)
+        if not isfinite(size) or size <= 0.0:
+            raise ValueError("obstacle_size debe ser positivo")
+        half = size / 2.0
+        rectangles = []
+        for point in occluders:
+            if len(point) != 2:
+                raise ValueError("Cada oclusor debe contener [x, y]")
+            x, y = float(point[0]), float(point[1])
+            rectangles.append((x - half, x + half, y - half, y + half))
+        return tuple(rectangles)
 
     def _has_line_of_sight(
         self,
@@ -168,6 +205,9 @@ class Sensor:
         robot_heading: float,
         occupied: set[GridCell],
         angular_resolution: float,
+        rectangles: tuple[Rectangle, ...] = (),
+        dense_geometry: GridGeometry | None = None,
+        dense_occupied: set[GridCell] | None = None,
     ) -> tuple[tuple[float, float], ...]:
         ray_count = max(1, ceil(self.field_of_view / angular_resolution))
         if self.field_of_view >= 360.0:
@@ -186,7 +226,10 @@ class Sensor:
             prefix = [(robot_x, robot_y)]
 
         endpoints = [
-            self._cast_ray(robot_x, robot_y, radians(angle), occupied)
+            self._cast_ray(
+                robot_x, robot_y, radians(angle), occupied, rectangles,
+                dense_geometry, dense_occupied,
+            )
             for angle in angles
         ]
         return tuple((*prefix, *endpoints))
@@ -197,7 +240,44 @@ class Sensor:
         robot_y: float,
         angle: float,
         occupied: set[GridCell],
+        rectangles: tuple[Rectangle, ...] = (),
+        dense_geometry: GridGeometry | None = None,
+        dense_occupied: set[GridCell] | None = None,
     ) -> tuple[float, float]:
+        direction_x, direction_y = cos(angle), sin(angle)
+        if dense_geometry is not None and dense_occupied is not None:
+            step_size = dense_geometry.resolution / 10.0
+            previous_distance = 0.0
+            distance = step_size
+            while distance <= self.detection_radius:
+                x = robot_x + direction_x * distance
+                y = robot_y + direction_y * distance
+                if dense_geometry.world_to_cell(x, y) in dense_occupied:
+                    return (
+                        robot_x + direction_x * previous_distance,
+                        robot_y + direction_y * previous_distance,
+                    )
+                previous_distance = distance
+                distance += step_size
+            return (
+                robot_x + direction_x * self.detection_radius,
+                robot_y + direction_y * self.detection_radius,
+            )
+        if rectangles:
+            hit_distance = min(
+                (
+                    self._ray_rectangle_distance(
+                        robot_x, robot_y, direction_x, direction_y, rectangle
+                    )
+                    for rectangle in rectangles
+                ),
+                default=inf,
+            )
+            distance = min(self.detection_radius, hit_distance)
+            return (
+                robot_x + direction_x * distance,
+                robot_y + direction_y * distance,
+            )
         step_size = self.grid_size / 25.0
         geometry = GridGeometry(self.grid_size)
         previous_distance = 0.0
@@ -216,3 +296,30 @@ class Sensor:
             robot_x + cos(angle) * self.detection_radius,
             robot_y + sin(angle) * self.detection_radius,
         )
+
+    @staticmethod
+    def _ray_rectangle_distance(
+        origin_x: float,
+        origin_y: float,
+        direction_x: float,
+        direction_y: float,
+        rectangle: Rectangle,
+    ) -> float:
+        x_min, x_max, y_min, y_max = rectangle
+        near, far = -inf, inf
+        for origin, direction, lower, upper in (
+            (origin_x, direction_x, x_min, x_max),
+            (origin_y, direction_y, y_min, y_max),
+        ):
+            if abs(direction) <= 1e-12:
+                if origin < lower or origin > upper:
+                    return inf
+                continue
+            first, second = (lower - origin) / direction, (upper - origin) / direction
+            near = max(near, min(first, second))
+            far = min(far, max(first, second))
+            if near > far:
+                return inf
+        if far < 0.0:
+            return inf
+        return max(0.0, near)

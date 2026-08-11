@@ -43,6 +43,8 @@ class SimulationMap:
         obstacles: Iterable[Sequence[float]] = DEFAULT_OBSTACLES,
         *,
         robot_start_world: Sequence[float] = (0.0, 0.0),
+        obstacle_size: float = 1.0,
+        world_bounds: Sequence[float] | None = None,
     ) -> None:
         self._obstacles: tuple[Coordinate, ...] = tuple(
             _coordinate(point, "Cada obstáculo") for point in obstacles
@@ -52,12 +54,32 @@ class SimulationMap:
         self._robot_start_world = _coordinate(
             robot_start_world, "robot_start_world"
         )
+        self._obstacle_size = float(obstacle_size)
+        if not isfinite(self._obstacle_size) or self._obstacle_size <= 0.0:
+            raise ValueError("obstacle_size debe ser positivo")
         self._robot_position: Coordinate = (0.0, 0.0)
+        self._world_bounds = None if world_bounds is None else tuple(float(v) for v in world_bounds)
+        if self._world_bounds is not None and (len(self._world_bounds) != 4 or not all(isfinite(v) for v in self._world_bounds)):
+            raise ValueError("world_bounds debe contener cuatro números finitos")
+        if self._world_bounds is not None and (self._world_bounds[0] >= self._world_bounds[2] or self._world_bounds[1] >= self._world_bounds[3]):
+            raise ValueError("world_bounds debe seguir [x_min, y_min, x_max, y_max]")
 
     @property
     def obstacles(self) -> tuple[Coordinate, ...]:
         """Coordenadas globales e inmutables de los obstáculos."""
         return self._obstacles
+
+    @property
+    def obstacle_size(self) -> float:
+        return self._obstacle_size
+
+    @property
+    def world_bounds(self) -> tuple[float, float, float, float] | None:
+        return self._world_bounds
+
+    @property
+    def local_obstacles(self) -> tuple[Coordinate, ...]:
+        return tuple(self.world_to_local(point) for point in self._obstacles)
 
     @property
     def robot_start_world(self) -> Coordinate:
@@ -119,10 +141,24 @@ class SimulationMap:
         if not isfinite(cell_size) or not 0.1 <= cell_size <= 5.0:
             raise ValueError("cell_size debe estar entre 0.1 y 5.0")
         geometry = GridGeometry(cell_size)
-        local_obstacles = {
-            geometry.world_to_cell(float(cell[0][0]), float(cell[0][1]))
-            for cell in self.sensor_matrix
-        }
+        local_obstacle_centers = self.local_obstacles
+        half = self._obstacle_size / 2.0
+        epsilon = min(cell_size, self._obstacle_size) * 1e-9
+        local_obstacles: set[GridCell] = set()
+        for obstacle_x, obstacle_y in local_obstacle_centers:
+            lower = geometry.world_to_cell(
+                obstacle_x - half + epsilon,
+                obstacle_y - half + epsilon,
+            )
+            upper = geometry.world_to_cell(
+                obstacle_x + half - epsilon,
+                obstacle_y + half - epsilon,
+            )
+            local_obstacles.update(
+                GridCell(column, row)
+                for row in range(lower.row, upper.row + 1)
+                for column in range(lower.column, upper.column + 1)
+            )
         robot_x, robot_y = self._robot_position
         relevant = (
             *local_obstacles,
@@ -134,11 +170,11 @@ class SimulationMap:
         max_x = max(point.column for point in relevant) + margin
         min_y = min(point.row for point in relevant) - margin
         max_y = max(point.row for point in relevant) + margin
-        return [
-            [
-                [*geometry.cell_to_world(GridCell(x, y))],
-                1 if GridCell(x, y) in local_obstacles else 0,
-            ]
-            for y in range(min_y, max_y + 1)
-            for x in range(min_x, max_x + 1)
-        ]
+        matrix: list[list[object]] = []
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                cell = GridCell(x, y)
+                matrix.append(
+                    [[*geometry.cell_to_world(cell)], 1 if cell in local_obstacles else 0]
+                )
+        return matrix

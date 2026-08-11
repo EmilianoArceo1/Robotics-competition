@@ -1,0 +1,9 @@
+ReturnPolicy,Environment,Robots,ReportedCoverage,LiveCoverage,UnreportedCells,RobotsAtBase
+selective_courier,env1,3,3.9554277498202737,3.9554277498202737,0,3
+selective_courier,env3,3,1.5940412598404654,1.5940412598404654,0,3
+nearest_frontier_return,env1,3,3.9352983465132994,3.9352983465132994,0,3
+nearest_frontier_return,env3,3,1.2972782593382512,1.2972782593382512,0,3
+gain_sweep_return,env1,3,3.91157440690151,3.91157440690151,0,3
+gain_sweep_return,env3,3,1.306083315397108,1.306083315397108,0,3
+homeward_sweep_return,env1,3,3.930265995686556,3.930265995686556,0,3
+homeward_sweep_return,env3,3,1.333802936323139,1.333802936323139,0,3

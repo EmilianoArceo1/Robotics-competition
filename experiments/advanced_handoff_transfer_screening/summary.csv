@@ -1,0 +1,5 @@
+HandoffPolicy,MeanReportedCoverage,WorstReportedCoverage,MeanUnreportedCells,MeanRobotsAtBase,MeanHandoffs,Trials
+payload_progress,2.7685148910009927,1.508273491563452,0,3,0,2
+time_saving,2.7685148910009927,1.508273491563452,0,3,0,2
+returning_courier,2.7685148910009927,1.508273491563452,0,3,0,2
+link_quality,2.7685148910009927,1.508273491563452,0,3,0,2

@@ -43,10 +43,17 @@ class Control(ABC):
         self.safe_tracker = safe_tracker or NoSafety()
 
     def detect(
-        self, environment_matrix: Iterable[Sequence[object]]
+        self,
+        environment_matrix: Iterable[Sequence[object]],
+        *,
+        occluders: Iterable[Sequence[float]] | None = None,
+        obstacle_size: float = 1.0,
     ) -> SensorMatrix:
         self.last_scan = self.sensor.scan(
-            self.physics.state, environment_matrix
+            self.physics.state,
+            environment_matrix,
+            occluders=occluders,
+            obstacle_size=obstacle_size,
         )
         observations = self.last_scan.detected
         self.belief_map.update(observations)

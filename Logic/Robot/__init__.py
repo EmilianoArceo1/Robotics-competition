@@ -4,6 +4,8 @@ from .Physic import ControlLimits, RobotGeometry, RobotPhysics, RobotState
 from .Sensor import Sensor, SensorMatrix, SensorScan
 from .Track import CoordinateMatrix, Track
 from .waypoints import Waypoints
+from .CollisionChecker import CollisionChecker, CollisionReport
+from .Fleet import FleetMember, RobotFleet
 
 __all__ = [
     "BeliefMap",
@@ -18,7 +20,8 @@ __all__ = [
     "SensorScan",
     "Track",
     "Waypoints",
+    "CollisionChecker",
+    "CollisionReport",
+    "FleetMember",
+    "RobotFleet",
 ]
-from .CollisionChecker import CollisionChecker
-
-__all__ = ["CollisionChecker"]

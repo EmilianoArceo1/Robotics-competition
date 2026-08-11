@@ -5,6 +5,7 @@ import unittest
 
 from Logic.Robot.Physic import RobotPhysics
 from Logic.Robot.Sensor import Sensor
+from Logic.Map.maps import SimulationMap
 
 
 AStar = importlib.import_module("Logic.Methods.Path planers.Astar").AStar
@@ -33,6 +34,44 @@ class PlanningAndSensorTests(unittest.TestCase):
         )
         self.assertIn([[0.6, 0.0], 1], detected)
         self.assertNotIn([[0.9, 0.0], 0], detected)
+
+    def test_physical_occlusion_does_not_change_with_grid_size(self) -> None:
+        endpoints = []
+        for grid_size in (0.2, 0.5, 1.0, 1.6):
+            sensor = Sensor(
+                detection_radius=5.0,
+                field_of_view=2.0,
+                grid_size=grid_size,
+            )
+            scan = sensor.scan(
+                (0.0, 0.0, 0.0),
+                (),
+                angular_resolution=1.0,
+                occluders=((2.0, 0.0),),
+                obstacle_size=1.0,
+            )
+            endpoints.append(scan.visibility_polygon[2][0])
+
+        for endpoint in endpoints:
+            self.assertAlmostEqual(endpoint, 1.5, places=6)
+
+    def test_obstacle_rasterization_preserves_physical_footprint(self) -> None:
+        simulation_map = SimulationMap(obstacles=((2.0, 0.0),))
+        for grid_size in (0.2, 0.5, 1.0, 1.6):
+            occupied = [
+                cell for cell in simulation_map.occupancy_matrix(
+                    padding=1.0, cell_size=grid_size
+                )
+                if cell[1] == 1
+            ]
+            self.assertTrue(occupied)
+            for cell in occupied:
+                x, y = cell[0]
+                half = grid_size / 2.0
+                self.assertGreater(x + half, 1.5)
+                self.assertLess(x - half, 2.5)
+                self.assertGreater(y + half, -0.5)
+                self.assertLess(y - half, 0.5)
 
 
 if __name__ == "__main__":

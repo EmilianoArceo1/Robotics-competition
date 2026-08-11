@@ -4,6 +4,8 @@ from .objective_assign_controller import ObjectiveAssignController
 from .path_planner_controller import PathPlannerController
 from .robot_control_controller import RobotControlController
 from .simulation_controller import SimulationController, SimulationStatus
+from .experiment_controller import ExperimentController
+from .coordination_controller import CoordinationController
 
 __all__ = [
     "BeliefCell",
@@ -15,4 +17,6 @@ __all__ = [
     "RobotControlController",
     "SimulationController",
     "SimulationStatus",
+    "ExperimentController",
+    "CoordinationController",
 ]

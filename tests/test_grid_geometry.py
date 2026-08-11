@@ -29,7 +29,12 @@ class GridGeometryTests(unittest.TestCase):
             padding=1.0, cell_size=0.3
         )
         occupied = [cell[0] for cell in matrix if cell[1] == 1]
-        self.assertEqual(occupied, [[0.6, -0.3]])
+        geometry = GridGeometry(0.3)
+        self.assertIn([0.6, -0.3], occupied)
+        self.assertGreater(len(occupied), 1)
+        for coordinate in occupied:
+            cell = geometry.world_to_cell(*coordinate)
+            self.assertEqual(list(geometry.cell_to_world(cell)), coordinate)
 
 
 if __name__ == "__main__":

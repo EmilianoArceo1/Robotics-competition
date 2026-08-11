@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-
 from Logic.Robot.BeliefMap import BeliefMap
 from Logic.Robot.Track import CoordinateMatrix
 from Logic.Map.grid_geometry import GridGeometry
 
 
-class Frontiers(ABC):
-    def __init__(self, *, cell_size: float = 1.0) -> None:
+class Frontiers:
+    def __init__(
+        self,
+        *,
+        cell_size: float = 1.0,
+        clustering_method: object | None = None,
+    ) -> None:
         if cell_size <= 0.0:
             raise ValueError("cell_size debe ser mayor que cero")
         self.cell_size = float(cell_size)
         self.geometry = GridGeometry(self.cell_size)
         self.raw_frontiers: CoordinateMatrix = []
+        self.clustering_method = clustering_method
+        self.frontier_clusters: list[object] = []
 
     def detect_frontiers(self, belief_map: BeliefMap) -> CoordinateMatrix:
         if not isinstance(belief_map, BeliefMap):
@@ -39,12 +44,23 @@ class Frontiers(ABC):
         ]
         return [coordinate.copy() for coordinate in self.raw_frontiers]
 
-    @abstractmethod
     def cluster_frontiers(
         self, frontiers: CoordinateMatrix
     ) -> CoordinateMatrix:
-        """Agrupa las fronteras y devuelve coordenadas candidatas."""
-        raise NotImplementedError
+        if self.clustering_method is None:
+            self.frontier_clusters = []
+            return [coordinate.copy() for coordinate in frontiers]
+        cluster = getattr(self.clustering_method, "cluster", None)
+        if not callable(cluster):
+            raise TypeError("clustering_method debe implementar cluster()")
+        self.frontier_clusters = cluster(
+            frontiers,
+            cell_size=self.cell_size,
+        )
+        return [
+            [float(item.representative[0]), float(item.representative[1])]
+            for item in self.frontier_clusters
+        ]
 
     def get_frontiers(self, belief_map: BeliefMap) -> CoordinateMatrix:
         return self.cluster_frontiers(self.detect_frontiers(belief_map))

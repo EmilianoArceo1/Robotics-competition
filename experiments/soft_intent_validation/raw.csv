@@ -1,0 +1,7 @@
+weights,wIG,wC,wR,wL,environment,size,robots,start_x,start_y,max_steps,coverage,policy
+0.50/0.25/0.20/0.05,0.5,0.25,0.2,0.05,env1,Small,3,15,15,50,0.03411214953271028,soft_intent_nearest
+0.50/0.25/0.20/0.05,0.5,0.25,0.2,0.05,env1,Small,5,15,15,50,0.034421279654924516,soft_intent_nearest
+0.50/0.25/0.20/0.05,0.5,0.25,0.2,0.05,env3,Medium,3,15,15,50,0.010341049171346392,soft_intent_nearest
+0.50/0.25/0.20/0.05,0.5,0.25,0.2,0.05,env3,Medium,5,15,15,50,0.010341049171346392,soft_intent_nearest
+0.50/0.25/0.20/0.05,0.5,0.25,0.2,0.05,env6,Large,3,15,15,50,0.010461456624850393,soft_intent_nearest
+0.50/0.25/0.20/0.05,0.5,0.25,0.2,0.05,env6,Large,5,15,15,50,0.010463161555851835,soft_intent_nearest

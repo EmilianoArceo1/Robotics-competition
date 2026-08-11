@@ -1,0 +1,3 @@
+HandoffPolicy,MeanReportedCoverage,WorstReportedCoverage,MeanUnreportedCells,MeanRobotsAtBase,MeanHandoffs,Trials
+closest_progress,2.7685148910009927,1.508273491563452,0,3,2.5,2
+payload_progress,2.7685148910009927,1.508273491563452,0,3,0,2

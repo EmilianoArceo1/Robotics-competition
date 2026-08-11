@@ -87,6 +87,10 @@ class BeliefMapController:
     def clear(self) -> None:
         self._cells = ()
 
+    def replace_map(self, simulation_map: SimulationMap) -> None:
+        self._map = simulation_map
+        self.clear()
+
     @staticmethod
     def _is_hex_color(color: str) -> bool:
         if len(color) != 7 or not color.startswith("#"):

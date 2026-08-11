@@ -1,0 +1,5 @@
+HandoffPolicy,Environment,ReportedCoverage,UnreportedCells,RobotsAtBase,Handoffs
+payload_progress,env1,6.941049604601006,0,5,1
+time_saving,env1,6.941049604601006,0,5,3
+returning_courier,env1,7.137311286843998,0,5,3
+link_quality,env1,6.941049604601006,0,5,2

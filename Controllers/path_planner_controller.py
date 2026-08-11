@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from Logic.Robot.Track import Track
 
 PlannerFactory = Callable[
-    ["RobotPhysics", tuple[tuple[float, float], ...], float], "Track"
+    ["RobotPhysics", tuple[tuple[float, float], ...], float, float], "Track"
 ]
 
 
@@ -19,11 +19,17 @@ def _astar_factory(
     robot: "RobotPhysics",
     obstacles: tuple[tuple[float, float], ...],
     grid_size: float,
+    safety_radius: float,
 ) -> "Track":
     astar_class = import_module(
         "Logic.Methods.Path planers.Astar"
     ).AStar
-    return astar_class(robot, obstacles, grid_size=grid_size)
+    return astar_class(
+        robot,
+        obstacles,
+        grid_size=grid_size,
+        safety_radius=safety_radius,
+    )
 
 
 class PathPlannerController:
@@ -50,13 +56,14 @@ class PathPlannerController:
         robot: "RobotPhysics",
         obstacles: tuple[tuple[float, float], ...],
         grid_size: float = 1.0,
+        safety_radius: float = 0.0,
     ) -> "Track":
         factory = self._methods[self._selected][1]
         if factory is None:
             raise NotImplementedError(
                 f"{self._selected} todavía no tiene implementación"
             )
-        return factory(robot, obstacles, grid_size)
+        return factory(robot, obstacles, grid_size, safety_radius)
 
     def select(self, method_name: str) -> None:
         if method_name not in self._methods:
